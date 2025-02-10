@@ -1,0 +1,27 @@
+services:
+  otrecorder:
+    container_name: lucos_locations_otrecorder
+    image: owntracks/recorder
+    volumes:
+      - store:/store
+    restart: always
+    environment:
+      - OTR_PORT=0        # Disables MQTT
+      - OTR_HTTPPORT=8083 # Runs HTTP on default port
+  otfrontend:
+    container_name: lucos_locations_otfrontend
+    build: ./otfrontend
+    image: lucos_locations_otfrontend
+    ports:
+      - "8028:80"
+    environment:
+      - SERVER_HOST=otrecorder
+      - SERVER_PORT=8083
+      - OT_USERNAME
+      - OT_PASSWORD
+    restart: always
+    depends_on:
+      - otrecorder
+
+volumes:
+  store:

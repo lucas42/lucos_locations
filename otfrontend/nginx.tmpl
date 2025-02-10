@@ -1,0 +1,80 @@
+worker_processes 1;
+events {
+	worker_connections 1024;
+}
+http {
+	upstream otrecorder {
+		server ${SERVER_HOST}:${SERVER_PORT};
+	}
+	server {
+		listen ${LISTEN_PORT};
+		listen [::]:${LISTEN_PORT};
+		auth_basic              "OwnTracks pub";
+		auth_basic_user_file    /etc/nginx/owntracks.htpasswd;        
+		root /usr/share/nginx/html;
+		location /owntracks/api/ {
+			proxy_pass http://otrecorder/api/;
+		}
+		location /owntracks/ws/ {
+			proxy_pass http://otrecorder/ws/;
+			proxy_http_version 1.1;
+			proxy_set_header Upgrade $http_upgrade;
+			proxy_set_header Connection upgrade;
+		}
+		location /map {
+			include /etc/nginx/mime.types;
+			rewrite ^/map/(.+) /$1         break;
+			rewrite ^/map/$    /index.html break;
+			rewrite ^/map$     /map/       redirect;
+		}
+
+		# HTTP Mode
+		location /owntracks/pub {
+			proxy_pass              http://otrecorder/pub;
+			proxy_http_version      1.1;
+			proxy_set_header        Host $host;
+			proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
+			proxy_set_header        X-Real-IP $remote_addr;
+
+			# Optionally force Recorder to use username from Basic
+			# authentication user. Whether or not client sets
+			# X-Limit-U and/or uses ?u= parameter, the user will
+			# be set to $remote_user.
+			proxy_set_header        X-Limit-U $remote_user;
+		}
+		
+		# OwnTracks Recorder Views (requires /view, /static, /utils)
+		location /owntracks/view/ {
+			proxy_buffering         off;            # Chrome
+			proxy_pass              http://otrecorder/view/;
+			proxy_http_version      1.1;
+			proxy_set_header        Host $host;
+			proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
+			proxy_set_header        X-Real-IP $remote_addr;
+		}
+		location /owntracks/static/ {
+			proxy_pass              http://otrecorder/static/;
+			proxy_http_version      1.1;
+			proxy_set_header        Host $host;
+			proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
+			proxy_set_header        X-Real-IP $remote_addr;
+		}
+		location /owntracks/utils/ {
+			proxy_pass              http://otrecorder/utils/;
+			proxy_http_version      1.1;
+			proxy_set_header        Host $host;
+			proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
+			proxy_set_header        X-Real-IP $remote_addr;
+		}
+
+		absolute_redirect off;
+		gzip on;
+		gzip_vary on;
+		gzip_proxied any;
+		gzip_comp_level 6;
+		gzip_buffers 16 8k;
+		gzip_http_version 1.1;
+		gzip_types text/plain text/css application/json application/javascript text/javascript;
+		proxy_read_timeout 600;
+	}
+}
