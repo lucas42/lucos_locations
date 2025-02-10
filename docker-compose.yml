@@ -4,6 +4,7 @@ services:
     image: owntracks/recorder
     volumes:
       - store:/store
+      - config:/config
     restart: always
     environment:
       - OTR_PORT=0        # Disables MQTT
@@ -25,3 +26,4 @@ services:
 
 volumes:
   store:
+  config:
