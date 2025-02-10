@@ -1,0 +1,8 @@
+{
+	"system": "lucos_locations",
+	"checks":{},
+	"metrics":{},
+	"ci": {
+		"circle": "gh/lucas42/lucos_locations"
+	}
+}
