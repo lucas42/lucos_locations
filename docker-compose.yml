@@ -11,7 +11,7 @@ services:
   otfrontend:
     container_name: lucos_locations_otfrontend
     build: ./otfrontend
-    image: lucos_locations_otfrontend
+    image: lucas42/lucos_locations_otfrontend
     ports:
       - "8028:80"
     environment:
