@@ -9,6 +9,7 @@ services:
     environment:
       - OTR_PORT=0        # Disables MQTT
       - OTR_HTTPPORT=8083 # Runs HTTP on default port
+      - OTR_GEOKEY
   otfrontend:
     container_name: lucos_locations_otfrontend
     build: ./otfrontend
