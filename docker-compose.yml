@@ -7,9 +7,14 @@ services:
       - config:/config
     restart: always
     environment:
-      - OTR_PORT=0        # Disables MQTT
+      - OTR_HOST=mqtt
+      - OTR_PORT=1883
       - OTR_HTTPPORT=8083 # Runs HTTP on default port
       - OTR_GEOKEY
+      - OTR_USER=${RECORDER_USERNAME}
+      - OTR_PASS=${RECORDER_PASSWORD}
+    depends_on:
+      - mqtt
   otfrontend:
     container_name: lucos_locations_otfrontend
     build: ./otfrontend
@@ -24,6 +29,16 @@ services:
     restart: always
     depends_on:
       - otrecorder
+  mqtt:
+    container_name: lucos_locations_mosquitto
+    build: ./mosquitto
+    image: lucas42/lucos_locations_mosquitto
+    restart: always
+    environment:
+      - OT_USERNAME
+      - OT_PASSWORD
+      - RECORDER_USERNAME
+      - RECORDER_PASSWORD
 
 volumes:
   store:
