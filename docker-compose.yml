@@ -34,12 +34,19 @@ services:
     build: ./mosquitto
     image: lucas42/lucos_locations_mosquitto
     restart: always
+    ports:
+      - "8883:8883"
     environment:
       - OT_USERNAME
       - OT_PASSWORD
       - RECORDER_USERNAME
       - RECORDER_PASSWORD
+    volumes:
+      - "letsencrypt:/etc/letsencrypt"
 
 volumes:
   store:
   config:
+  letsencrypt:
+    external: true
+    name: lucos_router_letsencrypt

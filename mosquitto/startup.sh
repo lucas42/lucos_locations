@@ -19,7 +19,7 @@ if [ -z "${OT_PASSWORD}" ]; then
 fi
 
 touch /mosquitto/config/passwords
-chown mosquitto:mosquitto /mosquitto/config/passwords
+chown root:root /mosquitto/config/passwords
 chmod 0700 /mosquitto/config/passwords
 mosquitto_passwd -b /mosquitto/config/passwords $RECORDER_USERNAME $RECORDER_PASSWORD
 mosquitto_passwd -b /mosquitto/config/passwords $OT_USERNAME $OT_PASSWORD
