@@ -42,11 +42,15 @@ services:
       - RECORDER_USERNAME
       - RECORDER_PASSWORD
     volumes:
+      - "mosquitto_data:/mosquitto/data"
+      - "mosquitto_log:/mosquitto/log"
       - "letsencrypt:/etc/letsencrypt"
 
 volumes:
   store:
   config:
+  mosquitto_data:
+  mosquitto_log:
   letsencrypt:
     external: true
     name: lucos_router_letsencrypt
