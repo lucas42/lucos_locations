@@ -12,6 +12,9 @@ http {
 		auth_basic              "OwnTracks pub";
 		auth_basic_user_file    /etc/nginx/owntracks.htpasswd;        
 		root /usr/share/nginx/html;
+		location / {
+			rewrite ^/$ /map/ redirect;
+		}
 		location /owntracks/api/ {
 			proxy_pass http://otrecorder/api/;
 		}
