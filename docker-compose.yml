@@ -20,7 +20,7 @@ services:
     build: ./otfrontend
     image: lucas42/lucos_locations_otfrontend
     ports:
-      - "8028:80"
+      - $PORT:80
     environment:
       - SERVER_HOST=otrecorder
       - SERVER_PORT=8083
