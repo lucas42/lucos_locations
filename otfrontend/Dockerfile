@@ -27,9 +27,9 @@ FROM owntracks/frontend:2.15.3
 # Copy the built assets from the builder stage
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-RUN apk add --no-cache apache2-utils # Needed for htpasswd
+RUN apk add --no-cache apache2-utils python3 openssl # Needed for htpasswd and info_server
 COPY config.js /usr/share/nginx/html/config/
-COPY _info.json /usr/share/nginx/html/
+COPY info_server.py /app/
 COPY nginx.tmpl /etc/nginx/nginx.tmpl
 
 COPY startup.sh .

@@ -71,7 +71,7 @@ http {
 		}
 		location /_info {
 			auth_basic off;
-			rewrite ^/_info$ /_info.json break;
+			proxy_pass http://localhost:8080/_info;
 		}
 
 		absolute_redirect off;
