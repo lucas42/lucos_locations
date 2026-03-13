@@ -1,6 +1,7 @@
 import http.server
 import json
-import subprocess
+import ssl
+import socket
 import datetime
 import os
 
@@ -56,17 +57,22 @@ class InfoHandler(http.server.BaseHTTPRequestHandler):
 
     def get_tls_expiry(self):
         try:
-            cmd = f"echo | timeout 1s openssl s_client -connect {MQTT_HOST}:{MQTT_PORT} 2>/dev/null | openssl x509 -noout -enddate"
-            proc = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-            
-            if proc.returncode == 0:
-                line = proc.stdout.strip()
-                if '=' in line:
-                    date_str = line.split('=')[1]
-                    # Date format: e.g., 'Feb  8 00:00:00 2027 GMT'
-                    expiry_date = datetime.datetime.strptime(date_str, '%b %d %H:%M:%S %Y %Z').replace(tzinfo=datetime.timezone.utc)
-                    now = datetime.datetime.now(datetime.timezone.utc)
-                    return int((expiry_date - now).total_seconds())
+            # Use ssl module for a pure TLS connection — no MQTT handshake, so mosquitto
+            # won't log protocol errors (unlike openssl s_client which triggered them on
+            # every /_info poll).
+            # CERT_OPTIONAL: parses the peer certificate without requiring chain
+            # verification to succeed (needed since MQTT_HOST is an internal name).
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_OPTIONAL
+            with socket.create_connection((MQTT_HOST, MQTT_PORT), timeout=2) as raw:
+                with ctx.wrap_socket(raw, server_hostname=MQTT_HOST) as tls:
+                    cert = tls.getpeercert()
+            not_after = cert.get('notAfter')
+            if not_after:
+                expiry_date = datetime.datetime.strptime(not_after, '%b %d %H:%M:%S %Y %Z').replace(tzinfo=datetime.timezone.utc)
+                now = datetime.datetime.now(datetime.timezone.utc)
+                return int((expiry_date - now).total_seconds())
         except Exception as e:
             print(f"Error checking TLS: {e}")
         return None
