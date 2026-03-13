@@ -2,12 +2,14 @@ import http.server
 import json
 import ssl
 import socket
+import subprocess
 import datetime
 import os
 
 PORT = 8080
 MQTT_HOST = os.environ.get('MQTT_HOST', 'mqtt')
 MQTT_PORT = int(os.environ.get('MQTT_PORT', '8883'))
+MQTT_CERT_FILE = os.environ.get('MQTT_CERT_FILE', '')
 
 # Hardcoded system information
 INFO_BASE = {
@@ -57,20 +59,31 @@ class InfoHandler(http.server.BaseHTTPRequestHandler):
 
     def get_tls_expiry(self):
         try:
-            # Use ssl module for a pure TLS connection — no MQTT handshake, so mosquitto
-            # won't log protocol errors (unlike openssl s_client which triggered them on
-            # every /_info poll).
-            # CERT_OPTIONAL: parses the peer certificate without requiring chain
-            # verification to succeed (needed since MQTT_HOST is an internal name).
-            ctx = ssl.create_default_context()
-            ctx.check_hostname = False
-            ctx.verify_mode = ssl.CERT_OPTIONAL
-            with socket.create_connection((MQTT_HOST, MQTT_PORT), timeout=2) as raw:
-                with ctx.wrap_socket(raw, server_hostname=MQTT_HOST) as tls:
-                    cert = tls.getpeercert()
-            not_after = cert.get('notAfter')
-            if not_after:
-                expiry_date = datetime.datetime.strptime(not_after, '%b %d %H:%M:%S %Y %Z').replace(tzinfo=datetime.timezone.utc)
+            if MQTT_CERT_FILE:
+                # Read the cert file directly — no TCP connection to mosquitto, no log noise.
+                proc = subprocess.run(
+                    ['openssl', 'x509', '-noout', '-enddate', '-in', MQTT_CERT_FILE],
+                    capture_output=True, text=True
+                )
+                line = proc.stdout.strip()
+            else:
+                # Fallback: connect via TLS and read the peer cert.
+                # CERT_OPTIONAL parses the cert without requiring chain verification
+                # (MQTT_HOST is an internal Docker service name, not the cert's CN/SAN).
+                ctx = ssl.create_default_context()
+                ctx.check_hostname = False
+                ctx.verify_mode = ssl.CERT_OPTIONAL
+                with socket.create_connection((MQTT_HOST, MQTT_PORT), timeout=2) as raw:
+                    with ctx.wrap_socket(raw, server_hostname=MQTT_HOST) as tls:
+                        not_after = tls.getpeercert().get('notAfter', '')
+                if not_after:
+                    expiry_date = datetime.datetime.strptime(not_after, '%b %d %H:%M:%S %Y %Z').replace(tzinfo=datetime.timezone.utc)
+                    now = datetime.datetime.now(datetime.timezone.utc)
+                    return int((expiry_date - now).total_seconds())
+                return None
+            if proc.returncode == 0 and '=' in line:
+                date_str = line.split('=')[1]
+                expiry_date = datetime.datetime.strptime(date_str, '%b %d %H:%M:%S %Y %Z').replace(tzinfo=datetime.timezone.utc)
                 now = datetime.datetime.now(datetime.timezone.utc)
                 return int((expiry_date - now).total_seconds())
         except Exception as e:
