@@ -27,6 +27,12 @@ services:
       - OT_USERNAME
       - OT_PASSWORD
     restart: always
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:80/"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     depends_on:
       - otrecorder
   mqtt:
@@ -34,6 +40,12 @@ services:
     build: ./mosquitto
     image: lucas42/lucos_locations_mosquitto
     restart: always
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "1883"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     ports:
       - "8883:8883"
     environment:
