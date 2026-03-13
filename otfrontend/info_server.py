@@ -2,14 +2,13 @@ import http.server
 import json
 import ssl
 import socket
-import subprocess
+import struct
 import datetime
 import os
 
 PORT = 8080
 MQTT_HOST = os.environ.get('MQTT_HOST', 'mqtt')
 MQTT_PORT = int(os.environ.get('MQTT_PORT', '8883'))
-MQTT_CERT_FILE = os.environ.get('MQTT_CERT_FILE', '')
 
 # Hardcoded system information
 INFO_BASE = {
@@ -33,10 +32,10 @@ class InfoHandler(http.server.BaseHTTPRequestHandler):
         info['metrics'] = {}
 
         expiry_seconds = self.get_tls_expiry()
-        
+
         # 20 days = 20 * 24 * 60 * 60 seconds
         check_ok = expiry_seconds is not None and expiry_seconds > (20 * 24 * 60 * 60)
-        
+
         info['checks']['mosquitto-tls'] = {
             "techDetail": "Checks whether the TLS Certificate on the mosquitto server is valid and not about to expire",
             "ok": check_ok
@@ -59,31 +58,44 @@ class InfoHandler(http.server.BaseHTTPRequestHandler):
 
     def get_tls_expiry(self):
         try:
-            if MQTT_CERT_FILE:
-                # Read the cert file directly — no TCP connection to mosquitto, no log noise.
-                proc = subprocess.run(
-                    ['openssl', 'x509', '-noout', '-enddate', '-in', MQTT_CERT_FILE],
-                    capture_output=True, text=True
-                )
-                line = proc.stdout.strip()
-            else:
-                # Fallback: connect via TLS and read the peer cert.
-                # CERT_OPTIONAL parses the cert without requiring chain verification
-                # (MQTT_HOST is an internal Docker service name, not the cert's CN/SAN).
-                ctx = ssl.create_default_context()
-                ctx.check_hostname = False
-                ctx.verify_mode = ssl.CERT_OPTIONAL
-                with socket.create_connection((MQTT_HOST, MQTT_PORT), timeout=2) as raw:
-                    with ctx.wrap_socket(raw, server_hostname=MQTT_HOST) as tls:
-                        not_after = tls.getpeercert().get('notAfter', '')
-                if not_after:
-                    expiry_date = datetime.datetime.strptime(not_after, '%b %d %H:%M:%S %Y %Z').replace(tzinfo=datetime.timezone.utc)
-                    now = datetime.datetime.now(datetime.timezone.utc)
-                    return int((expiry_date - now).total_seconds())
-                return None
-            if proc.returncode == 0 and '=' in line:
-                date_str = line.split('=')[1]
-                expiry_date = datetime.datetime.strptime(date_str, '%b %d %H:%M:%S %Y %Z').replace(tzinfo=datetime.timezone.utc)
+            # Connect to mosquitto via TLS and perform a proper MQTT handshake.
+            # A bare TLS connection (no MQTT data) causes mosquitto to log "protocol error"
+            # on every poll. Sending a valid MQTT CONNECT packet instead causes mosquitto
+            # to log "disconnected, not authorised" — a normal informational entry.
+            # CERT_OPTIONAL: parses the peer cert without requiring chain verification
+            # (MQTT_HOST is an internal Docker service name, not in the cert's SAN).
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_OPTIONAL
+            with socket.create_connection((MQTT_HOST, MQTT_PORT), timeout=2) as raw:
+                with ctx.wrap_socket(raw, server_hostname=MQTT_HOST) as tls:
+                    # Read the cert during the TLS handshake
+                    cert = tls.getpeercert()
+
+                    # Build MQTT 3.1.1 CONNECT packet
+                    client_id = b'lucos-healthcheck'
+                    variable_header = (
+                        b'\x00\x04MQTT'  # Protocol name
+                        b'\x04'          # Protocol level (3.1.1)
+                        b'\x00'          # Connect flags (no clean session, no will, no auth)
+                        b'\x00\x00'      # Keepalive: 0 seconds
+                    )
+                    # Payload: client ID as UTF-8 prefixed string
+                    payload = struct.pack('!H', len(client_id)) + client_id
+                    remaining = variable_header + payload
+                    connect_pkt = bytes([0x10, len(remaining)]) + remaining
+
+                    tls.sendall(connect_pkt)
+
+                    # Read CONNACK (4 bytes: fixed header 2 + variable header 2)
+                    tls.recv(4)
+
+                    # Send DISCONNECT packet so mosquitto closes cleanly
+                    tls.sendall(bytes([0xe0, 0x00]))
+
+            not_after = cert.get('notAfter')
+            if not_after:
+                expiry_date = datetime.datetime.strptime(not_after, '%b %d %H:%M:%S %Y %Z').replace(tzinfo=datetime.timezone.utc)
                 now = datetime.datetime.now(datetime.timezone.utc)
                 return int((expiry_date - now).total_seconds())
         except Exception as e:

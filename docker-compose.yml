@@ -26,9 +26,6 @@ services:
       - SERVER_PORT=8083
       - OT_USERNAME
       - OT_PASSWORD
-      - MQTT_CERT_FILE=/etc/letsencrypt/live/locations.l42.eu/fullchain.pem
-    volumes:
-      - "letsencrypt:/etc/letsencrypt:ro"
     restart: always
     depends_on:
       - otrecorder
