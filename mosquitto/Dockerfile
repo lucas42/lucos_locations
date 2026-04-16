@@ -1,4 +1,6 @@
 FROM eclipse-mosquitto:2.0.20
+ARG VERSION
+ENV VERSION=$VERSION
 
 # Create certreaders group (GID 1500, matches lucos_router) and add mosquitto user to it
 # so mosquitto can read TLS private keys from the shared letsencrypt volume

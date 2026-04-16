@@ -23,6 +23,8 @@ RUN npm run build
 
 # Final stage
 FROM owntracks/frontend:2.15.3
+ARG VERSION
+ENV VERSION=$VERSION
 
 # Copy the built assets from the builder stage
 COPY --from=builder /app/dist /usr/share/nginx/html
