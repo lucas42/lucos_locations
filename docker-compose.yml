@@ -18,7 +18,7 @@ services:
   otfrontend:
     container_name: lucos_locations_otfrontend
     build: ./otfrontend
-    image: lucas42/lucos_locations_otfrontend
+    image: lucas42/lucos_locations_otfrontend:${VERSION:-latest}
     ports:
       - $PORT:80
     environment:
@@ -39,7 +39,7 @@ services:
   mqtt:
     container_name: lucos_locations_mosquitto
     build: ./mosquitto
-    image: lucas42/lucos_locations_mosquitto
+    image: lucas42/lucos_locations_mosquitto:${VERSION:-latest}
     restart: always
     healthcheck:
       test: ["CMD", "nc", "-z", "127.0.0.1", "1883"]
