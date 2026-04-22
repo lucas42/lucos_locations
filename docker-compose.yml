@@ -14,7 +14,8 @@ services:
       - OTR_USER=${RECORDER_USERNAME}
       - OTR_PASS=${RECORDER_PASSWORD}
     depends_on:
-      - mqtt
+      mqtt:
+        condition: service_healthy
   otfrontend:
     container_name: lucos_locations_otfrontend
     build: ./otfrontend
