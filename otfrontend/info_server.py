@@ -67,6 +67,7 @@ class InfoHandler(http.server.BaseHTTPRequestHandler):
             ctx = ssl.create_default_context()
             ctx.check_hostname = False
             ctx.verify_mode = ssl.CERT_OPTIONAL
+            ctx.minimum_version = ssl.TLSVersion.TLSv1_2
             with socket.create_connection((MQTT_HOST, MQTT_PORT), timeout=2) as raw:
                 with ctx.wrap_socket(raw, server_hostname=MQTT_HOST) as tls:
                     # Read the cert during the TLS handshake
