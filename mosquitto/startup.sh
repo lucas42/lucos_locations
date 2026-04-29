@@ -30,4 +30,19 @@ chmod 0600 /mosquitto/config/passwords
 mosquitto_passwd -b /mosquitto/config/passwords $RECORDER_USERNAME $RECORDER_PASSWORD
 mosquitto_passwd -b /mosquitto/config/passwords $OT_USERNAME $OT_PASSWORD
 
-mosquitto -c /mosquitto/config/mosquitto.conf
+# Start mosquitto in the background so we can capture its PID for cert reload signals
+mosquitto -c /mosquitto/config/mosquitto.conf &
+MOSQUITTO_PID=$!
+
+# Cert watcher: when Let's Encrypt renews the TLS cert, send SIGHUP to mosquitto so
+# it reloads the new cert without dropping active MQTT connections.
+# Uses moved_to (Let's Encrypt renames files atomically into place) and close_write
+# as belt-and-braces. The while true loop self-heals if inotifywait fails transiently.
+CERT_DIR="/etc/letsencrypt/live/locations.l42.eu"
+while true; do
+    inotifywait -e close_write,moved_to "$CERT_DIR" && kill -HUP "$MOSQUITTO_PID"
+done &
+
+# Wait for mosquitto to exit; propagates its exit code so Docker sees a non-zero
+# exit if mosquitto crashes
+wait "$MOSQUITTO_PID"
