@@ -17,6 +17,14 @@ if [ -z "${OT_PASSWORD}" ]; then
 	echo "Missing environment variable OT_PASSWORD"
 	exit 1
 fi
+if [ -z "${HEALTHCHECK_USERNAME}" ]; then
+	echo "Missing environment variable HEALTHCHECK_USERNAME"
+	exit 1
+fi
+if [ -z "${HEALTHCHECK_PASSWORD}" ]; then
+	echo "Missing environment variable HEALTHCHECK_PASSWORD"
+	exit 1
+fi
 
 # Fix letsencrypt directory permissions so the mosquitto user can traverse
 # to cert files. Certbot creates /etc/letsencrypt/archive/ with mode 0700,
@@ -29,6 +37,7 @@ chown mosquitto:mosquitto /mosquitto/config/passwords
 chmod 0600 /mosquitto/config/passwords
 mosquitto_passwd -b /mosquitto/config/passwords $RECORDER_USERNAME $RECORDER_PASSWORD
 mosquitto_passwd -b /mosquitto/config/passwords $OT_USERNAME $OT_PASSWORD
+mosquitto_passwd -b /mosquitto/config/passwords $HEALTHCHECK_USERNAME $HEALTHCHECK_PASSWORD
 
 # Start mosquitto in the background so we can capture its PID for cert reload signals
 mosquitto -c /mosquitto/config/mosquitto.conf &

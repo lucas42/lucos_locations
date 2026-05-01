@@ -28,6 +28,8 @@ services:
       - OT_USERNAME
       - OT_PASSWORD
       - LISTEN_PORT=80
+      - HEALTHCHECK_USERNAME
+      - HEALTHCHECK_PASSWORD
     restart: always
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:80/_info"]
@@ -55,6 +57,8 @@ services:
       - OT_PASSWORD
       - RECORDER_USERNAME
       - RECORDER_PASSWORD
+      - HEALTHCHECK_USERNAME
+      - HEALTHCHECK_PASSWORD
     volumes:
       - "mosquitto_data:/mosquitto/data"
       - "mosquitto_log:/mosquitto/log"

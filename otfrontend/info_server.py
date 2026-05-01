@@ -9,6 +9,8 @@ import os
 PORT = 8080
 MQTT_HOST = os.environ.get('MQTT_HOST', 'mqtt')
 MQTT_PORT = int(os.environ.get('MQTT_PORT', '8883'))
+HEALTHCHECK_USERNAME = os.environ.get('HEALTHCHECK_USERNAME', '')
+HEALTHCHECK_PASSWORD = os.environ.get('HEALTHCHECK_PASSWORD', '')
 
 # Hardcoded system information
 INFO_BASE = {
@@ -60,8 +62,8 @@ class InfoHandler(http.server.BaseHTTPRequestHandler):
         try:
             # Connect to mosquitto via TLS and perform a proper MQTT handshake.
             # A bare TLS connection (no MQTT data) causes mosquitto to log "protocol error"
-            # on every poll. Sending a valid MQTT CONNECT packet instead causes mosquitto
-            # to log "disconnected, not authorised" — a normal informational entry.
+            # on every poll. Sending a valid MQTT CONNECT packet with credentials allows
+            # a clean connect/disconnect without any error log entries.
             # CERT_OPTIONAL: parses the peer cert without requiring chain verification
             # (MQTT_HOST is an internal Docker service name, not in the cert's SAN).
             ctx = ssl.create_default_context()
@@ -73,16 +75,22 @@ class InfoHandler(http.server.BaseHTTPRequestHandler):
                     # Read the cert during the TLS handshake
                     cert = tls.getpeercert()
 
-                    # Build MQTT 3.1.1 CONNECT packet
+                    # Build MQTT 3.1.1 CONNECT packet with username/password auth
                     client_id = b'lucos-healthcheck'
+                    username = HEALTHCHECK_USERNAME.encode('utf-8')
+                    password = HEALTHCHECK_PASSWORD.encode('utf-8')
                     variable_header = (
                         b'\x00\x04MQTT'  # Protocol name
                         b'\x04'          # Protocol level (3.1.1)
-                        b'\x00'          # Connect flags (no clean session, no will, no auth)
+                        b'\xC2'          # Connect flags: username(7)+password(6)+cleanSession(1)
                         b'\x00\x00'      # Keepalive: 0 seconds
                     )
-                    # Payload: client ID as UTF-8 prefixed string
-                    payload = struct.pack('!H', len(client_id)) + client_id
+                    # Payload: client ID, username, password — each as a UTF-8 prefixed string
+                    payload = (
+                        struct.pack('!H', len(client_id)) + client_id +
+                        struct.pack('!H', len(username)) + username +
+                        struct.pack('!H', len(password)) + password
+                    )
                     remaining = variable_header + payload
                     connect_pkt = bytes([0x10, len(remaining)]) + remaining
 
