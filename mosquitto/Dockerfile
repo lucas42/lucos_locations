@@ -1,4 +1,4 @@
-FROM eclipse-mosquitto:2.0.20
+FROM eclipse-mosquitto:2.0.22
 ARG VERSION
 ENV VERSION=$VERSION
 
