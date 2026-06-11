@@ -1,7 +1,7 @@
 # Builder stage
 # This is used to modify the frontend to add support for antimeridian journeys
 # If https://github.com/owntracks/frontend/pull/164 is merged, this can be removed
-FROM node:18-alpine AS builder
+FROM node:26-alpine AS builder
 
 WORKDIR /app
 
