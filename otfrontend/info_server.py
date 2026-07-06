@@ -5,12 +5,21 @@ import socket
 import struct
 import datetime
 import os
+import urllib.request
 
 PORT = 8080
 MQTT_HOST = os.environ.get('MQTT_HOST', 'mqtt')
 MQTT_PORT = int(os.environ.get('MQTT_PORT', '8883'))
 HEALTHCHECK_USERNAME = os.environ.get('HEALTHCHECK_USERNAME', '')
 HEALTHCHECK_PASSWORD = os.environ.get('HEALTHCHECK_PASSWORD', '')
+# Same host/port nginx already proxies /owntracks/api/ to (see nginx.tmpl)
+SERVER_HOST = os.environ.get('SERVER_HOST', 'otrecorder')
+SERVER_PORT = int(os.environ.get('SERVER_PORT', '8083'))
+
+# 30 hours: long enough to tolerate a normal period of inactivity (e.g. overnight,
+# or significant-change mode not triggering), short enough to catch a multi-day
+# silent gap within a day or two of it starting.
+LOCATION_FRESHNESS_THRESHOLD_SECONDS = 30 * 60 * 60
 
 # Hardcoded system information
 INFO_BASE = {
@@ -51,6 +60,25 @@ class InfoHandler(http.server.BaseHTTPRequestHandler):
         info['metrics']['mosquitto-tls-expiry'] = {
             "value": expiry_seconds if expiry_seconds is not None else -1,
             "techDetail": "The number of seconds until the mosquitto TLS Certification expires"
+        }
+
+        age_seconds, freshness_error = self.get_location_age_seconds()
+
+        freshness_ok = age_seconds is not None and age_seconds < LOCATION_FRESHNESS_THRESHOLD_SECONDS
+
+        info['checks']['location-freshness'] = {
+            "techDetail": "Checks that fresh location data has been recorded recently, to catch silent gaps (e.g. a stopped client or broken ingestion) that a service-up healthcheck alone wouldn't detect",
+            "ok": freshness_ok
+        }
+        if not freshness_ok:
+            if freshness_error is not None:
+                info['checks']['location-freshness']['debug'] = freshness_error
+            else:
+                info['checks']['location-freshness']['debug'] = f"Last recorded location data is {age_seconds} seconds old"
+
+        info['metrics']['location-data-age-seconds'] = {
+            "value": age_seconds if age_seconds is not None else -1,
+            "techDetail": "The number of seconds since the most recent location fix recorded, across all devices"
         }
 
         self.send_response(200)
@@ -110,6 +138,32 @@ class InfoHandler(http.server.BaseHTTPRequestHandler):
         except Exception as e:
             print(f"Error checking TLS: {e}")
         return None
+
+    def get_location_age_seconds(self):
+        """Returns (age_seconds, debug). age_seconds is None when unavailable;
+        debug explains why (distinguishing "couldn't reach the recorder" from
+        "recorder responded fine but has never recorded anything") so whoever's
+        investigating isn't sent down the wrong path."""
+        try:
+            # Kept well under lucos_monitoring's 1s /_info fetch timeout (see
+            # docs/info-endpoint-spec.md in the lucos repo) — this is a local
+            # container-to-container call, so it should return in milliseconds.
+            url = f"http://{SERVER_HOST}:{SERVER_PORT}/api/0/last"
+            with urllib.request.urlopen(url, timeout=0.3) as response:
+                data = json.loads(response.read())
+        except Exception as e:
+            print(f"Error fetching location data: {e}")
+            return None, "Failed to fetch last recorded location data from the recorder"
+
+        # The recorder returns a JSON array of per-device location objects
+        # (each with a "tst" unix timestamp) when it has data, or an empty
+        # object "{}" when it has none.
+        timestamps = [entry['tst'] for entry in data if isinstance(entry, dict) and 'tst' in entry] if isinstance(data, list) else []
+        if not timestamps:
+            return None, "No location data has ever been recorded"
+
+        now = datetime.datetime.now(datetime.timezone.utc).timestamp()
+        return int(now - max(timestamps)), None
 
 if __name__ == '__main__':
     # ThreadingHTTPServer is better for production-like use in low-traffic scenarios
