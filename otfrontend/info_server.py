@@ -62,7 +62,7 @@ class InfoHandler(http.server.BaseHTTPRequestHandler):
             "techDetail": "The number of seconds until the mosquitto TLS Certification expires"
         }
 
-        age_seconds = self.get_location_age_seconds()
+        age_seconds, freshness_error = self.get_location_age_seconds()
 
         freshness_ok = age_seconds is not None and age_seconds < LOCATION_FRESHNESS_THRESHOLD_SECONDS
 
@@ -71,8 +71,8 @@ class InfoHandler(http.server.BaseHTTPRequestHandler):
             "ok": freshness_ok
         }
         if not freshness_ok:
-            if age_seconds is None:
-                info['checks']['location-freshness']['debug'] = "Failed to fetch last recorded location data from the recorder"
+            if freshness_error is not None:
+                info['checks']['location-freshness']['debug'] = freshness_error
             else:
                 info['checks']['location-freshness']['debug'] = f"Last recorded location data is {age_seconds} seconds old"
 
@@ -140,26 +140,30 @@ class InfoHandler(http.server.BaseHTTPRequestHandler):
         return None
 
     def get_location_age_seconds(self):
+        """Returns (age_seconds, debug). age_seconds is None when unavailable;
+        debug explains why (distinguishing "couldn't reach the recorder" from
+        "recorder responded fine but has never recorded anything") so whoever's
+        investigating isn't sent down the wrong path."""
         try:
+            # Kept well under lucos_monitoring's 1s /_info fetch timeout (see
+            # docs/info-endpoint-spec.md in the lucos repo) — this is a local
+            # container-to-container call, so it should return in milliseconds.
             url = f"http://{SERVER_HOST}:{SERVER_PORT}/api/0/last"
-            with urllib.request.urlopen(url, timeout=2) as response:
+            with urllib.request.urlopen(url, timeout=0.3) as response:
                 data = json.loads(response.read())
-
-            # The recorder returns a JSON array of per-device location objects
-            # (each with a "tst" unix timestamp) when it has data, or an empty
-            # object "{}" when it has none.
-            if not isinstance(data, list) or not data:
-                return None
-
-            timestamps = [entry['tst'] for entry in data if isinstance(entry, dict) and 'tst' in entry]
-            if not timestamps:
-                return None
-
-            now = datetime.datetime.now(datetime.timezone.utc).timestamp()
-            return int(now - max(timestamps))
         except Exception as e:
-            print(f"Error checking location freshness: {e}")
-        return None
+            print(f"Error fetching location data: {e}")
+            return None, "Failed to fetch last recorded location data from the recorder"
+
+        # The recorder returns a JSON array of per-device location objects
+        # (each with a "tst" unix timestamp) when it has data, or an empty
+        # object "{}" when it has none.
+        timestamps = [entry['tst'] for entry in data if isinstance(entry, dict) and 'tst' in entry] if isinstance(data, list) else []
+        if not timestamps:
+            return None, "No location data has ever been recorded"
+
+        now = datetime.datetime.now(datetime.timezone.utc).timestamp()
+        return int(now - max(timestamps)), None
 
 if __name__ == '__main__':
     # ThreadingHTTPServer is better for production-like use in low-traffic scenarios
