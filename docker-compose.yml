@@ -86,6 +86,24 @@ services:
       # — no /oauth2/userinfo call needed for this check.
       - OAUTH2_PROXY_OIDC_GROUPS_CLAIM=scopes
       - OAUTH2_PROXY_ALLOWED_GROUPS=locations:read
+      # aithne's id_token "scopes" claim only ever contains the INTERSECTION
+      # of what this OAuth2 request's scope= parameter asked for and what
+      # the principal is actually granted (lucos_aithne's handleAuthCodeGrant
+      # narrows to that intersection deliberately, so an RP can't silently
+      # receive scopes it never asked for). oauth2-proxy's OIDC provider
+      # defaults to requesting "openid email profile" plus, since
+      # OAUTH2_PROXY_ALLOWED_GROUPS is set above, a literal extra "groups"
+      # scope — a convention borrowed from IdPs (Keycloak/Okta-style) where
+      # requesting the "groups" scope switches on a groups claim. aithne has
+      # no such "groups" scope; its scope names ARE its authorisation scopes
+      # (e.g. locations:read). So the default request never intersects with
+      # what's granted, and the scopes claim comes back empty — passing
+      # signature verification but then rejected by OAUTH2_PROXY_ALLOWED_GROUPS
+      # ("[AuthFailure] Invalid authentication via OAuth2: unauthorized").
+      # Setting --scope explicitly bypasses oauth2-proxy's default+"groups"
+      # entirely (it only applies when unset) and requests the actual aithne
+      # scope name instead.
+      - OAUTH2_PROXY_SCOPE=openid email profile locations:read
       - OAUTH2_PROXY_EMAIL_DOMAINS=*
       - OAUTH2_PROXY_UPSTREAMS=static://202
       - OAUTH2_PROXY_SET_XAUTHREQUEST=true
