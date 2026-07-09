@@ -73,6 +73,14 @@ services:
       - OAUTH2_PROXY_LOGIN_URL=${AITHNE_ORIGIN}/oauth2/authorize
       - OAUTH2_PROXY_REDEEM_URL=${AITHNE_TOKEN_URL}
       - OAUTH2_PROXY_OIDC_JWKS_URL=${AITHNE_JWKS_URL}
+      # Skipping discovery means oauth2-proxy never learns aithne's
+      # id_token_signing_alg_values_supported, so its verifier (go-oidc)
+      # falls back to its OIDC-spec-mandatory default of RS256-only —
+      # rejecting aithne's ES256-signed id_tokens with "unexpected
+      # signature algorithm ES256; expected [RS256]". aithne deliberately
+      # signs with ES256 only (see lucas42/lucos_worlds#21 for the same
+      # mismatch hit by a prior OIDC adoption). Must be set explicitly.
+      - OAUTH2_PROXY_OIDC_ENABLED_SIGNING_ALGS=ES256
       # Gate on locations:read. oauth2-proxy reads the groups claim straight
       # off the id_token minted at token redemption (lucas42/lucos_aithne#277)
       # — no /oauth2/userinfo call needed for this check.
