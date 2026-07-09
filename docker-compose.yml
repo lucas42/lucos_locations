@@ -32,6 +32,8 @@ services:
       - HEALTHCHECK_PASSWORD
       - MQTT_HOST
       - MQTT_PORT
+      - OAUTH2_PROXY_HOST=oauth2-proxy
+      - OAUTH2_PROXY_PORT=4180
     restart: always
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:80/_info"]
@@ -41,6 +43,45 @@ services:
       start_period: 15s
     depends_on:
       - otrecorder
+      - oauth2-proxy
+  # Fronts the human map-UI paths only (see nginx.tmpl) with an aithne OIDC
+  # login, gated on the locations:read scope. The device publish path and
+  # MQTT stay on the existing credential auth below — a phone can't do an
+  # interactive OIDC login. See lucas42/lucos_locations#92.
+  oauth2-proxy:
+    container_name: lucos_locations_oauth2_proxy
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.15.3
+    restart: always
+    environment:
+      - OAUTH2_PROXY_HTTP_ADDRESS=0.0.0.0:4180
+      - OAUTH2_PROXY_PROVIDER=oidc
+      - OAUTH2_PROXY_CLIENT_ID=lucos_locations
+      - OAUTH2_PROXY_CLIENT_SECRET=${KEY_LUCOS_AITHNE}
+      - OAUTH2_PROXY_COOKIE_SECRET=${OAUTH2_PROXY_COOKIE_SECRET}
+      - OAUTH2_PROXY_COOKIE_SECURE=${OAUTH2_PROXY_COOKIE_SECURE:-true}
+      - OAUTH2_PROXY_COOKIE_SAMESITE=lax
+      - OAUTH2_PROXY_REDIRECT_URL=${APP_ORIGIN}/oauth2/callback
+      # aithne's id_token `iss` is always its browser-facing origin, and the
+      # login redirect must send the browser there too. But this container's
+      # own outbound discovery/token/JWKS calls need a container-reachable
+      # address, which differs from AITHNE_ORIGIN in dev (see AITHNE_JWKS_URL
+      # precedent in ~/.claude/references — Docker bridge IP in dev, same
+      # public origin in prod). Skip discovery and set every endpoint
+      # explicitly rather than relying on fetching it from AITHNE_ORIGIN.
+      - OAUTH2_PROXY_OIDC_ISSUER_URL=${AITHNE_ORIGIN}
+      - OAUTH2_PROXY_SKIP_OIDC_DISCOVERY=true
+      - OAUTH2_PROXY_LOGIN_URL=${AITHNE_ORIGIN}/oauth2/authorize
+      - OAUTH2_PROXY_REDEEM_URL=${AITHNE_TOKEN_URL}
+      - OAUTH2_PROXY_OIDC_JWKS_URL=${AITHNE_JWKS_URL}
+      # Gate on locations:read. oauth2-proxy reads the groups claim straight
+      # off the id_token minted at token redemption (lucas42/lucos_aithne#277)
+      # — no /oauth2/userinfo call needed for this check.
+      - OAUTH2_PROXY_OIDC_GROUPS_CLAIM=scopes
+      - OAUTH2_PROXY_ALLOWED_GROUPS=locations:read
+      - OAUTH2_PROXY_EMAIL_DOMAINS=*
+      - OAUTH2_PROXY_UPSTREAMS=static://202
+      - OAUTH2_PROXY_SET_XAUTHREQUEST=true
+      - OAUTH2_PROXY_SILENCE_PING_LOGGING=true
   mqtt:
     container_name: lucos_locations_mosquitto
     build: ./mosquitto
