@@ -71,7 +71,13 @@ http {
 			auth_request      /oauth2/auth;
 			auth_request_set  $auth_cookie $upstream_http_set_cookie;
 			add_header        Set-Cookie $auth_cookie;
-			error_page 401 =403      /oauth2/sign_in;
+			# Document-navigation path only (lucas42/lucos_locations#99): skip the
+			# oauth2-proxy sign-in interstitial and bounce straight to aithne. The
+			# bare `=` (no status code) preserves oauth2-proxy's own 302 response
+			# from /oauth2/start, rather than rewriting it to 403 like the API/WS
+			# locations below — a redirect is the right response shape here because
+			# this is a top-level browser navigation, not a fetch/WebSocket call.
+			error_page 401 =         /oauth2/start;
 			include /etc/nginx/mime.types;
 			rewrite ^/map/(.+) /$1         break;
 			rewrite ^/map/$    /index.html break;
