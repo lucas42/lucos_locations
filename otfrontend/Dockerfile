@@ -25,6 +25,8 @@ RUN npm run build
 FROM owntracks/frontend:2.15.3
 ARG VERSION
 ENV VERSION=$VERSION
+# Without this, info_server.py's diagnostic print()s are block-buffered and never reach docker logs
+ENV PYTHONUNBUFFERED=1
 
 # Copy the built assets from the builder stage
 COPY --from=builder /app/dist /usr/share/nginx/html

@@ -62,7 +62,7 @@ class InfoHandler(http.server.BaseHTTPRequestHandler):
             "techDetail": "The number of seconds until the mosquitto TLS Certification expires"
         }
 
-        age_seconds, freshness_error = self.get_location_age_seconds()
+        age_seconds, freshness_error, recorded_at = self.get_location_age_seconds()
 
         freshness_ok = age_seconds is not None and age_seconds < LOCATION_FRESHNESS_THRESHOLD_SECONDS
 
@@ -74,7 +74,8 @@ class InfoHandler(http.server.BaseHTTPRequestHandler):
             if freshness_error is not None:
                 info['checks']['location-freshness']['debug'] = freshness_error
             else:
-                info['checks']['location-freshness']['debug'] = f"Last recorded location data is {age_seconds} seconds old"
+                recorded_at_iso = datetime.datetime.fromtimestamp(recorded_at, datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+                info['checks']['location-freshness']['debug'] = f"Last recorded location data is {age_seconds} seconds old ({recorded_at_iso})"
 
         info['metrics']['location-data-age-seconds'] = {
             "value": age_seconds if age_seconds is not None else -1,
@@ -140,10 +141,11 @@ class InfoHandler(http.server.BaseHTTPRequestHandler):
         return None
 
     def get_location_age_seconds(self):
-        """Returns (age_seconds, debug). age_seconds is None when unavailable;
-        debug explains why (distinguishing "couldn't reach the recorder" from
-        "recorder responded fine but has never recorded anything") so whoever's
-        investigating isn't sent down the wrong path."""
+        """Returns (age_seconds, debug, recorded_at). age_seconds and recorded_at
+        are None when unavailable; debug explains why (distinguishing "couldn't
+        reach the recorder" from "recorder responded fine but has never recorded
+        anything") so whoever's investigating isn't sent down the wrong path.
+        recorded_at is the unix timestamp the age was derived from."""
         try:
             # Kept well under lucos_monitoring's 1s /_info fetch timeout (see
             # docs/info-endpoint-spec.md in the lucos repo) — this is a local
@@ -153,17 +155,18 @@ class InfoHandler(http.server.BaseHTTPRequestHandler):
                 data = json.loads(response.read())
         except Exception as e:
             print(f"Error fetching location data: {e}")
-            return None, "Failed to fetch last recorded location data from the recorder"
+            return None, "Failed to fetch last recorded location data from the recorder", None
 
         # The recorder returns a JSON array of per-device location objects
         # (each with a "tst" unix timestamp) when it has data, or an empty
         # object "{}" when it has none.
         timestamps = [entry['tst'] for entry in data if isinstance(entry, dict) and 'tst' in entry] if isinstance(data, list) else []
         if not timestamps:
-            return None, "No location data has ever been recorded"
+            return None, "No location data has ever been recorded", None
 
         now = datetime.datetime.now(datetime.timezone.utc).timestamp()
-        return int(now - max(timestamps)), None
+        latest = max(timestamps)
+        return int(now - latest), None, latest
 
 if __name__ == '__main__':
     # ThreadingHTTPServer is better for production-like use in low-traffic scenarios
