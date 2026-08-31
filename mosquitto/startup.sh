@@ -35,9 +35,24 @@ find /etc/letsencrypt -type d -exec chmod o+rx {} \; 2>/dev/null || true
 touch /mosquitto/config/passwords
 chown mosquitto:mosquitto /mosquitto/config/passwords
 chmod 0600 /mosquitto/config/passwords
-mosquitto_passwd -b /mosquitto/config/passwords $RECORDER_USERNAME $RECORDER_PASSWORD
-mosquitto_passwd -b /mosquitto/config/passwords $OT_USERNAME $OT_PASSWORD
-mosquitto_passwd -b /mosquitto/config/passwords $HEALTHCHECK_USERNAME $HEALTHCHECK_PASSWORD
+
+# Run mosquitto_passwd as the mosquitto user, not root: mosquitto__fopen()'s
+# restricted-read check compares the file's owner to the CALLING process's
+# uid, not a fixed "must be root" rule (see lucas42/lucos_locations#109) — so
+# writing to a mosquitto-owned file as root trips the "owner is not root"
+# warning, which a future mosquitto release will turn into a hard failure.
+# The broker itself is unaffected (it drops privileges before loading this
+# file); only these three writes need to move.
+#
+# BusyBox su's "-c CMD ARG0 ARGS" passes the first extra positional arg as
+# $0 inside CMD, not $1 — the leading "su-arg0" placeholder is required so
+# the username/password land in $1/$2 as intended. Passed as args rather
+# than interpolated into the CMD string so a credential containing shell
+# metacharacters (lucos_creds values are not guaranteed plain) is never
+# parsed as shell syntax.
+su -s /bin/sh mosquitto -c 'mosquitto_passwd -b /mosquitto/config/passwords "$1" "$2"' su-arg0 "$RECORDER_USERNAME" "$RECORDER_PASSWORD"
+su -s /bin/sh mosquitto -c 'mosquitto_passwd -b /mosquitto/config/passwords "$1" "$2"' su-arg0 "$OT_USERNAME" "$OT_PASSWORD"
+su -s /bin/sh mosquitto -c 'mosquitto_passwd -b /mosquitto/config/passwords "$1" "$2"' su-arg0 "$HEALTHCHECK_USERNAME" "$HEALTHCHECK_PASSWORD"
 
 # Start mosquitto in the background so we can capture its PID for cert reload signals
 mosquitto -c /mosquitto/config/mosquitto.conf &
