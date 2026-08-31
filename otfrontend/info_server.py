@@ -68,7 +68,9 @@ class InfoHandler(http.server.BaseHTTPRequestHandler):
 
         info['checks']['location-freshness'] = {
             "techDetail": "Checks that fresh location data has been recorded recently, to catch silent gaps (e.g. a stopped client or broken ingestion) that a service-up healthcheck alone wouldn't detect",
-            "ok": freshness_ok
+            "ok": freshness_ok,
+            # Tolerate one dropped upstream fetch before paging (lucas42/lucos_locations#111).
+            "failThreshold": 2
         }
         if not freshness_ok:
             if freshness_error is not None:
