@@ -18,6 +18,18 @@ RUN npm install vue-leaflet-antimeridian@1.0.1
 RUN sed -i '/import {/,/} from "vue2-leaflet";/ { /LPolyline,/d }' src/views/Map.vue && \
     sed -i '/import L from "leaflet";/a import { LPolyline } from "vue-leaflet-antimeridian";' src/views/Map.vue
 
+# Patch session-expiry handling: oauth2-proxy (fronting this service, see
+# #99) returns 401/403 - not a redirect - on API/WS calls once a session has
+# expired, but upstream frontend v2.15.3 doesn't check response status
+# before parsing JSON, and retries the WebSocket forever regardless. Adds a
+# "session expired, sign in again" banner instead.
+# See #101 - re-verify this patch on any future v2.15.3 version bump.
+COPY session-expiry/api.js src/api.js
+COPY session-expiry/authState.js src/authState.js
+COPY session-expiry/SessionExpiredBanner.vue src/components/SessionExpiredBanner.vue
+COPY session-expiry/patch.cjs patch.cjs
+RUN node patch.cjs && rm patch.cjs
+
 # Build the application
 RUN npm run build
 
