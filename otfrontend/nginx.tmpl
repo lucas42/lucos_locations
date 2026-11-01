@@ -17,6 +17,12 @@ http {
 			rewrite ^/$ /map/ redirect;
 		}
 
+		# Public on purpose: crawlers can't authenticate, and this tells them to stay out.
+		location = /robots.txt {
+			default_type text/plain;
+			return 200 "User-agent: *\nDisallow: /\n";
+		}
+
 		# Internal subrequest oauth2-proxy uses to authorise every other
 		# location below. Not directly reachable from outside.
 		location = /oauth2/auth {
